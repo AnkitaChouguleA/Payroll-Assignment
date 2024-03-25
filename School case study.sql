@@ -21,6 +21,9 @@ WHERE TABLE_TYPE = 'BASE TABLE';
 --change context
 use school
 
+SELECT 'select * from ' + name AS Query FROM sys.tables;
+
+
 -- CourseMaster
 create table CourseMaster
 (
@@ -322,11 +325,136 @@ on s.SID = e.SID
 where DATEPART(mm,doe) = DATEPART(mm,getdate())
 group by CourseName
 
+/*
+STORED PROCEDURE
+USING THE ABOVE TABLE LAYOUTS AS SCHEMA, WRITE A STORED PROCEDURE FOR THE FOLLOWING SPECIFICATIONS:
+Input Parameters:
+Date From (Mandatory), Date To (optional, if not specified, take the current date), & Student ID (Mandatory)  
+Requirements:
+Course-wise,enrollment-wise in ascending order of course name to be printed. If no enrollment exists for a given course for the period specified, 
+print course name and the remarks ‘No enrollment for this period’
+------------------------------------------------------------------------------------------
+Enrollment Details of<Student Name > from <FromDate> To <ToDate>
+Origin : 							Type:
+SL.No       Course Name    Date of Enrollment    Fee Waiver?	Grade  
+							      (Yes/No)
+  …		…		……				……	  ……
+  …		…		……				…… 	  ……
+                       Total No. of Courses Enrolled: 
 
+*/
 
+select * from CourseMaster
+select * from StudentMaster
+select * from EnrollmentMaster
 
+ /*************************************************************************************
+SP_Name	: GetEnrollmentDetails  
+Author	: Ankita Chougule
+Date	: Mar 25th 2024
+DB		: School
+Purpose : It will get Course-wise, enrollment-wise details of a student.
 
+History:
+---------------------------------------------------------------------------------------
+SLNo	Done by				Date of change			Remarks
+---------------------------------------------------------------------------------------
+1		Ankita Chougule		Mar 9th 2024			New sp
 
+****************************************************************************************/
+
+use school
+
+create or alter procedure GetEnrollmentDetails
+	@datefrom datetime,
+	@dateto datetime null,
+	@studentid tinyint
+as
+begin
+
+	set nocount on; -- Add this line to suppress the row count message
+
+	-- Check if @DateTo is NULL, then assign the current date
+	if @dateto is null
+	set @dateto = GETDATE()
+
+	--declare variable to store student name
+	declare @studentname varchar(40)
+	declare @origin char(1)
+	declare @type char(1)
+
+	--get student details
+	select @studentname = name, @origin = Origin, @type = Type from StudentMaster 
+	where SID = @studentid
+
+	--print enrollment details header
+	print 'Enrollment Details of ' + @studentname + 
+	' from ' + convert(varchar(10), @datefrom, 101) + 
+	' to ' + convert(varchar(10), @dateto, 101)
+	print 'Origin : ' + @origin + space(20) +'Type : ' + @type
+
+	-- 3. Get enrollment details and Store the data in temp table
+	select ROW_NUMBER() over(order by cm.CourseName asc) as SLNo, cm.CourseName, em.DOE,
+	case when em.FWF = 1 then 'Yes' else 'No' end as FeeWaiver,
+	em.Grade into #TempEnrollmentDetails
+	from EnrollmentMaster em
+	inner join CourseMaster cm
+	on em.CID = cm.CID
+	where em.SID = @studentid
+	and em.DOE between @datefrom and @dateto
+
+	--print data from #TempEnrollmentDetails
+	--select * from #TempEnrollmentDetails
+
+	-- Check if there are any enrollments for the given student and period
+	if @@ROWCOUNT = 0
+	begin
+		print 'No enrollment for this period'
+	end
+	else
+	begin
+		-- Print enrollment details 
+		print 'SL.No    Course Name		Date of Enrollment		Fee Waiver?			Grade '
+	end
+ 
+	declare @x int = 1
+	declare @cnt int
+	select @cnt = count(*) from #TempEnrollmentDetails
+	declare @rno int
+	declare @coursename varchar(40)
+	declare @DateOfEnrol datetime
+	declare @FeeWaiver varchar(5)
+	declare @grade char(1)
+
+	--loop start
+	while (@x <= @cnt)
+	begin
+		select @rno = SLNo,
+		@coursename = CourseName,
+		@DateOfEnrol = DOE,
+		@FeeWaiver = FeeWaiver,
+		@grade = Grade
+		from #TempEnrollmentDetails
+		where slno = @x
+
+		--print the data
+		print cast(@rno as varchar) + space(10) +  @coursename +
+		space(17)+ convert(varchar, @DateOfEnrol, 107) +space(15)+ @FeeWaiver +
+		space(10)+@grade
+
+		--incr
+			set @x = @x + 1
+
+	end -- loop end
+	print'--------------------------------------------------------------------------------------------------'
+	print'	Total No. of Courses Enrolled: ' + cast(@cnt as varchar)
+end
+go
+
+exec GetEnrollmentDetails 
+	@datefrom = '2020-01-01',
+	@dateto = null,
+	@studentid = 2
 
 
 
